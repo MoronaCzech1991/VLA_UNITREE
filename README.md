@@ -15,7 +15,7 @@ cd ~/VLA_UNITREE
 git pull --ff-only origin main
 uv venv --python 3.12 .venv-vla
 source .venv-vla/bin/activate
-uv pip install -r requirements.txt "lerobot[smolvla]==0.7.0"
+uv pip install -r requirements.txt "lerobot[smolvla,training]==0.7.0"
 unset LIBGL_ALWAYS_SOFTWARE
 export GALLIUM_DRIVER=d3d12
 export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
