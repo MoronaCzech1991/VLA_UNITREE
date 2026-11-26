@@ -2,6 +2,20 @@
 
 The Unitree G1 transfers a blue or brown box to an output bench in a simulated industrial station. Every simulation opens the MuJoCo viewer. Both colors move between starting positions across episodes.
 
+## Whole-body humanoid VLA with NVIDIA GR00T
+
+For a walking humanoid demo, use the official Isaac Lab Arena **G1 Loco-Manipulation Box Pick and Place** scenario. The G1 walks to the shelf, picks up the box with both hands, and deposits it in the output bin. This uses the published GR00T N1.6 checkpoint and the Arena whole-body controller in the Galileo Lab scene. The checkpoint is adapted to that scene and embodiment.
+
+1. Install [Isaac Lab Arena](https://isaac-sim.github.io/IsaacLab-Arena/release/0.3.1/) on a compatible GPU workstation. Check the [Isaac Sim system requirements](https://docs.isaacsim.omniverse.nvidia.com/5.1.0/installation/requirements.html) before installing.
+2. Follow the [official evaluation setup](https://isaac-sim.github.io/IsaacLab-Arena/release/0.3.1/pages/example_workflows/locomanipulation/step_5_evaluation.html) to download the pretrained checkpoint and start the GR00T policy server. The checkpoint is [GN1x-Tuned-Arena-G1-Loco-Manipulation](https://huggingface.co/nvidia/GN1x-Tuned-Arena-G1-Loco-Manipulation), revision `gn1_6`.
+3. Use the Arena evaluation environment to launch the demo with cameras and the Kit GUI. Point the command at your actual checkouts:
+
+```bash
+python /path/to/VLA_UNITREE/run_humanoid_vla.py --arena /path/to/IsaacLab-Arena
+```
+
+The launcher uses the same pretrained policy configuration as the NVIDIA tutorial. It requires the separately installed Arena runtime and a running GR00T server. The MuJoCo workstation below remains available for local collection and telemetry.
+
 ## Watch live telemetry
 
 The viewer shows the operating mode, physics device, episode, stage, instruction, saved demonstrations, and box positions. A timestamped CSV under `runs/telemetry-*.csv` is written throughout each session. The reported XYZ positions are simulator telemetry and are not passed into SmolVLA during inference. The demonstration dataset is saved separately under the path set with `--dataset`.
