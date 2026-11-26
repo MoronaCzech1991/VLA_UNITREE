@@ -2,6 +2,24 @@
 
 The Unitree G1 transfers a blue or brown box to an output bench in a simulated industrial station. Every simulation opens the MuJoCo viewer. Both colors move between starting positions across episodes.
 
+## Pretrained whole-body VLA in MuJoCo
+
+Run the published [nepyope/sonic_walk](https://huggingface.co/nepyope/sonic_walk) **pi0.5** checkpoint using the LeRobot Unitree G1 simulator and the **SONIC** whole-body decoder. This checkpoint is trained for walking. The workstation and box-transfer tasks below use different checkpoints.
+
+Set up a separate Python 3.12 environment using the [LeRobot G1 installation guide](https://huggingface.co/docs/lerobot/en/unitree_g1#part-1-getting-started), including the Unitree SDK, Pinocchio, and the MuJoCo simulation dependencies. For LeRobot 0.7.0, add the policy and GUI extras inside that environment:
+
+```bash
+python -m pip install "lerobot[unitree-g1,pi,core-scripts]==0.7.0" mujoco loguru msgpack msgpack-numpy
+```
+
+Run from this checkout in the activated G1 environment:
+
+```bash
+python run_sonic_vla.py --device cpu
+```
+
+The launcher always requests the live **Rerun** window, including the head-camera stream used by the VLA. The LeRobot simulator uses offscreen camera rendering for policy input. In this mode, Rerun provides the visual feed. CPU inference avoids keeping policy weights in VRAM and can run slower than real time. To try CUDA on a machine with sufficient VRAM, pass `--device cuda`. The first launch downloads the checkpoint and simulator files.
+
 ## Whole-body humanoid VLA with NVIDIA GR00T
 
 For a walking humanoid demo, use the official Isaac Lab Arena **G1 Loco-Manipulation Box Pick and Place** scenario. The G1 walks to the shelf, picks up the box with both hands, and deposits it in the output bin. This uses the published GR00T N1.6 checkpoint and the Arena whole-body controller in the Galileo Lab scene. The checkpoint is adapted to that scene and embodiment.
