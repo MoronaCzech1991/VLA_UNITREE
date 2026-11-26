@@ -7,6 +7,7 @@ import mujoco as mj
 from mujoco import viewer as native_viewer
 import numpy as np
 
+from telemetry import Telemetry, log_path
 from teacher import (
     COLORS, DESTINATION, ENGLISH_COLORS, HALF_BOX, HAND_OFFSET, OUTPUT_Z,
     Physics, arm, boxes, build, finger_pose, image, reset, run, train,
@@ -146,6 +147,7 @@ def collect(args, model, data, renderer, robot, physics, viewer, rng):
 
     if args.dataset.exists():
         raise FileExistsError(f"Dataset already exists: {args.dataset}. Choose a new path.")
+    viewer.stage = "Calibrating RGB camera"
     policy = train(model, data, renderer, 24, np.random.default_rng(810),
                    Path("runs/teacher.npy"), None, viewer)
     if policy is None:
@@ -167,12 +169,15 @@ def collect(args, model, data, renderer, robot, physics, viewer, rng):
             reset(model, data, rng)
             color = COLORS[episode % len(COLORS)]
             instruction = f"Pick up the {ENGLISH_COLORS[color]} box and place it on the output bench."
+            viewer.episode = episode + 1
+            viewer.instruction = instruction
             record = Recorder(robot, instruction)
             if run(model, data, renderer, policy, physics, color, viewer, record):
                 for frame in record.frames:
                     dataset.add_frame(frame)
                 dataset.save_episode()
                 saved += 1
+                viewer.saved = saved
                 print(f"Saved demonstration {saved}/{args.episodes}.", flush=True)
     finally:
         dataset.finalize()
@@ -181,6 +186,8 @@ def collect(args, model, data, renderer, robot, physics, viewer, rng):
 
 
 def rollout(args, model, data, renderer, robot, physics, viewer, rng):
+    viewer.stage = "Loading SmolVLA"
+    viewer.sync()
     policy = SmolVLA(args.checkpoint, args.policy_device, robot)
     for episode in range(args.episodes):
         if not viewer.is_running():
@@ -190,6 +197,9 @@ def rollout(args, model, data, renderer, robot, physics, viewer, rng):
         robot.grip_request[:] = False
         robot.grip_position[:] = 0
         policy.policy.reset()
+        viewer.stage = "SmolVLA control"
+        viewer.episode = episode + 1
+        viewer.instruction = args.instruction
         print(f"SmolVLA episode {episode + 1}: {args.instruction}", flush=True)
         for _ in range(args.steps):
             if not viewer.is_running():
@@ -231,21 +241,27 @@ def main():
     rng = np.random.default_rng(args.seed)
     reset(model, data, rng)
     robot = Robot(model)
-    with native_viewer.launch_passive(model, data) as viewer:
-        with viewer.lock():
-            viewer.cam.lookat[:] = [0.19, 0, 0.79]
-            viewer.cam.distance = 2.35
-            viewer.cam.azimuth = 135
-            viewer.cam.elevation = -24
-        viewer.sync()
-        with mj.Renderer(model, height=240, width=320) as renderer:
-            physics = Physics(model, data, args.device)
-            execute = collect if args.mode == "collect" else rollout
-            execute(args, model, data, renderer, robot, physics, viewer, rng)
-            print("Close the viewer to exit.", flush=True)
-            while viewer.is_running():
-                viewer.sync()
-                time.sleep(0.03)
+    path = log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Telemetry CSV: {path}", flush=True)
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        with native_viewer.launch_passive(model, data) as window:
+            with window.lock():
+                window.cam.lookat[:] = [0.02, 0, 0.86]
+                window.cam.distance = 3.1
+                window.cam.azimuth = 135
+                window.cam.elevation = -22
+            viewer = Telemetry(window, model, data, robot.boxes, args.mode, args.device, stream)
+            viewer.sync()
+            with mj.Renderer(model, height=240, width=320) as renderer:
+                physics = Physics(model, data, args.device)
+                execute = collect if args.mode == "collect" else rollout
+                execute(args, model, data, renderer, robot, physics, viewer, rng)
+                viewer.stage = "Finished"
+                print("Close the viewer to exit.", flush=True)
+                while viewer.is_running():
+                    viewer.sync()
+                    time.sleep(0.03)
 
 
 if __name__ == "__main__":

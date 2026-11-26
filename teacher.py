@@ -13,7 +13,7 @@ ENGLISH_COLORS = {"azul": "blue", "marrom": "brown"}
 INPUT_Z = 0.94
 OUTPUT_Z = 0.92
 HALF_BOX = np.array([0.055, 0.043, 0.04])
-DESTINATION = np.array([0.34, 0.0, OUTPUT_Z + HALF_BOX[2] + 0.003])
+DESTINATION = np.array([0.43, 0.0, OUTPUT_Z + HALF_BOX[2] + 0.003])
 HAND_OFFSET = np.array([0.0, 0.0, 0.065])
 
 
@@ -43,7 +43,26 @@ def build(assets):
     add(world, "light", pos=[0, 0, 3], dir=[0, 0, -1], diffuse=[0.9] * 3)
     add(world, "camera", name="producao", pos=[0.36, 0, 2.2],
         xyaxes=[0, 1, 0, -1, 0, 0], fovy=40)
-    add(world, "geom", type="plane", size=[3, 3, 0.1], rgba=[0.22, 0.25, 0.28, 1])
+    add(world, "geom", type="plane", size=[4, 4, 0.1], rgba=[0.25, 0.27, 0.29, 1])
+    # Keep decor neutral in the policy camera and outside the box transfer area.
+    def decor(name, pos, size, rgba):
+        add(world, "geom", name=name, type="box", pos=pos, size=size,
+            rgba=rgba, contype=0, conaffinity=0)
+
+    decor("rear_wall", [-1.65, 0, 1.25], [0.05, 2.5, 1.25], [0.53, 0.55, 0.57, 1])
+    for index, y in enumerate(np.linspace(-2, 2, 5)):
+        decor(f"steel_column_{index}", [-1.58, y, 1.25], [0.075, 0.075, 1.25],
+              [0.17, 0.21, 0.25, 1])
+    for index, y in enumerate((-0.84, 0.84)):
+        decor(f"aisle_marking_{index}", [0.35, y, 0.003], [1.3, 0.016, 0.003],
+              [0.65, 0.62, 0.36, 1])
+        decor(f"pallet_{index}", [-0.85, y, 0.055], [0.31, 0.23, 0.055],
+              [0.29, 0.29, 0.28, 1])
+        for tier in range(2):
+            decor(f"stored_carton_{index}_{tier}", [-0.85, y, 0.24 + tier * 0.26],
+                  [0.25, 0.19, 0.13], [0.49, 0.45, 0.39, 1])
+    decor("output_bin_label", [0.565, 0, OUTPUT_Z - 0.075], [0.006, 0.065, 0.022],
+          [0.81, 0.84, 0.83, 1])
     for y, z, color, width in [
         (-0.28, INPUT_Z, [0.34, 0.37, 0.4, 1], 0.105),
         (0.28, INPUT_Z, [0.34, 0.37, 0.4, 1], 0.105),
@@ -52,8 +71,11 @@ def build(assets):
         add(world, "geom", type="box", pos=[0.35, y, z - 0.025],
             size=[0.14, width, 0.025], rgba=color)
         for x in (0.24, 0.46):
-            add(world, "geom", type="box", pos=[x, y, z / 2 - 0.025],
-                size=[0.016, 0.035, z / 2 - 0.025], rgba=[0.31, 0.34, 0.37, 1])
+            for leg_y in (y - width * 0.8, y + width * 0.8):
+                add(world, "geom", type="box", pos=[x, leg_y, z / 2 - 0.025],
+                    size=[0.015, 0.015, z / 2 - 0.025], rgba=[0.31, 0.34, 0.37, 1])
+        add(world, "geom", type="box", pos=[0.35, y, z * 0.31],
+            size=[0.122, width * 0.88, 0.012], rgba=[0.26, 0.28, 0.30, 1])
     for color, rgba in zip(COLORS, ([0.03, 0.23, 0.95, 1], [0.73, 0.31, 0.10, 1])):
         body = add(world, "body", name=color, pos=[0.35, 0, INPUT_Z + HALF_BOX[2]])
         add(body, "freejoint", name=f"caixa_{color}")
@@ -218,7 +240,11 @@ def run(model, data, renderer, policy, physics, color, viewer, record=None):
     ]
     fingers, closed_angles = finger_pose(model, side)
     grip = 0.0
+    stages = ("Approach", "Align with box", "Close fingers", "Lift", "Carry to output",
+              "Lower onto bench", "Settle", "Open fingers", "Retract")
     for index, (goal, carrying, frames) in enumerate(waypoints):
+        if hasattr(viewer, "stage"):
+            viewer.stage = stages[index]
         start_grip = grip
         start = data.site_xpos[site].copy()
         for fraction in np.linspace(1 / frames, 1, frames):

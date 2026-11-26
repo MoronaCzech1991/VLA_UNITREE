@@ -2,6 +2,10 @@
 
 The Unitree G1 transfers a blue or brown box to an output bench in a simulated industrial station. Every simulation opens the MuJoCo viewer. Both colors move between starting positions across episodes.
 
+## Watch live telemetry
+
+The viewer shows the operating mode, physics device, episode, stage, instruction, saved demonstrations, and box positions. A timestamped CSV under `runs/telemetry-*.csv` is written throughout each session. The reported XYZ positions are simulator telemetry and are not passed into SmolVLA during inference. The demonstration dataset is saved separately under the path set with `--dataset`.
+
 ## Who controls the robot?
 
 In `run` mode, a trained **SmolVLA checkpoint** receives the RGB camera image, robot joint state, and complete text instruction. Its action commands set 15 G1 joint targets and the two simulated gripper commands. The simulator applies limits, checks whether the commanded gripper is near a box, and simulates the release. The model chooses which box to approach, which hand to use, and when to close and open the gripper.
