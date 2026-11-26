@@ -1,14 +1,12 @@
-# VLA Unitree G1 | Estação de logística
+# Unitree G1 VLA | Factory logistics demo
 
-Protótipo de uma estação industrial genérica para uma apresentação de logística. O G1 recebe a instrução em português, identifica a caixa azul ou marrom pela câmera do MuJoCo e a transfere para a bancada de saída. As duas caixas mudam de posição entre episódios.
+The Unitree G1 receives an instruction, locates a blue or brown box using a simulated RGB camera, and places the selected box on the output bench. Box positions vary between episodes. The factory workstation is a generic simulation scene.
 
-A demonstração usa uma **política modular experimental**. Um parser reconhece a cor solicitada, um detector de cor localiza o objeto em RGB e uma regressão treinada com exemplos visuais prevê a posição de aproximação da mão. A sequência de ações usa cinemática inversa. A base do G1 está fixa e a caixa acompanha a mão durante a pegada assistida. Após a soltura, a caixa é simulada com gravidade e contato. A cena não representa uma fábrica real nem testa força de pegada, equilíbrio ou locomoção.
+**The MuJoCo viewer opens on every run.** Watch the boxes change positions during calibration, then watch the robot place the selected box. The window stays open after the last episode. Close it to exit.
 
-O protótipo implementa a cadeia visão, linguagem e ação com componentes pequenos e interpretáveis. **SmolVLA ainda não está conectada ou treinada.** Os rótulos usados para calibrar a regressão são posições verdadeiras do simulador. A escolha da caixa e a predição do alvo durante a execução usam a instrução e a câmera RGB. O estado real da caixa é usado para inicialização, regra de contato da pegada assistida e avaliação.
+## Run on Ubuntu-MuJoCo
 
-## Rodar no Ubuntu-MuJoCo
-
-Com o ambiente já usado para rodar o G1 e o SO-101:
+Reuse the Python environment and Unitree G1 assets from the earlier MuJoCo setup:
 
 ```bash
 cd ~
@@ -19,14 +17,17 @@ source ~/mujoco-demo/.venv/bin/activate
 env -u LIBGL_ALWAYS_SOFTWARE \
   GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA \
   python demo.py --assets ~/mujoco-demo/mujoco_menagerie/unitree_g1 \
-  --device cuda:0 --instruction "Pegue a caixa azul e coloque na saída"
+  --device cuda:0 \
+  --instruction "Pick up the blue box and place it on the output bench"
 ```
 
-Substitua **azul** por **marrom** para escolher a outra caixa. Passe `--seed 43` para mudar a distribuição inicial. Feche a janela e rode novamente para repetir a demonstração. O modo CUDA usa MuJoCo Warp para os passos de física, com cinemática inversa e decisão visual na CPU. O modo gráfico abre uma janela e deixa o resultado visível depois da entrega.
+If you already cloned the repository, run `git pull --ff-only origin main` inside `~/VLA_UNITREE` first. Replace `blue` with `brown` to pick the other box. The words `azul` and `marrom` also work. Use `--seed 43` to change the starting layout and `--episodes 3` to watch three attempts in one window.
 
-## Instalação independente
+The CUDA mode uses MuJoCo Warp for physics and runs inverse kinematics and visual target estimation on the CPU. On WSL, D3D12 handles the display. On a graphical Linux desktop, run the same Python command without the preceding `env` lines. Pass `--device cpu` to use the CPU for physics.
 
-Requer Python 3.12 ou superior e Git. Em uma instalação nova:
+## Standalone installation
+
+Requires Python 3.12 or later, Git, and a graphical session. In a fresh clone:
 
 ```bash
 python -m venv .venv
@@ -36,16 +37,24 @@ git clone --depth 1 --filter=blob:none --sparse https://github.com/google-deepmi
 git -C assets sparse-checkout set unitree_g1
 ```
 
-Use `--assets assets/unitree_g1` nesse caso. O modelo original e suas malhas são distribuídos pelo [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1). Para rodar em CPU, passe `--device cpu`.
+In this setup, use `--assets assets/unitree_g1` in the run command. The [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1) provides the original robot model and meshes.
 
-## Gerar exemplos e testar
+## Watch calibration and evaluation
 
-Sem janela, use EGL se estiver disponível. O resultado inclui contagem de sucessos. O critério é a caixa selecionada apoiada na saída e a outra permanecendo na entrada.
+The first launch calibrates the visual policy automatically. Pass `--train` to recalibrate and `--dataset runs/calibration.npz` to save the examples. For example, with the WSL display environment shown above:
 
 ```bash
-MUJOCO_GL=egl python demo.py --assets ~/mujoco-demo/mujoco_menagerie/unitree_g1 \
-  --device cpu --train --dataset runs/calibracao.npz --headless --episodes 8 \
-  --instruction "Pegue a caixa marrom"
+env -u LIBGL_ALWAYS_SOFTWARE \
+  GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA \
+  python demo.py --assets ~/mujoco-demo/mujoco_menagerie/unitree_g1 \
+  --device cuda:0 --train --dataset runs/calibration.npz --episodes 3 \
+  --instruction "Pick up the brown box"
 ```
 
-O NPZ opcional contém imagens RGB, instruções, características visuais e posições de aproximação. É um conjunto de calibração visual, sem trajetórias de ação no formato LeRobot. Para adaptar a SmolVLA, ainda é preciso registrar observações e ações a cada passo, converter os episódios para LeRobot e treinar ou ajustar um checkpoint para o espaço de ações do G1.
+The terminal reports an episode as successful when the selected box is supported by the output bench and the other box remains at the input.
+
+## How the prototype works
+
+The instruction parser selects a color. RGB segmentation identifies the corresponding box, and a regression trained on camera examples estimates its 3D position. The controller executes a fixed pick-and-place sequence using inverse kinematics. The G1 has a fixed base and an assisted grasp. MuJoCo simulates gravity and contact after release. The scene is intended for demonstrating the task flow. Grasp force, whole-body balance, and locomotion are outside its scope.
+
+The prototype uses a modular vision-language-action policy. SmolVLA integration and training are pending. The optional NPZ stores camera images, instructions, visual features, and approach targets. Adapting SmolVLA requires recording time-aligned observations and actions, converting those episodes to LeRobot format, and training or adapting a checkpoint for the G1 action space.

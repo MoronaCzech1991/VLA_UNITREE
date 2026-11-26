@@ -10,6 +10,7 @@ import numpy as np
 
 
 COLORS = ("azul", "marrom")
+ENGLISH_COLORS = {"azul": "blue", "marrom": "brown"}
 INPUT_Z = 0.94
 OUTPUT_Z = 0.92
 HALF_BOX = np.array([0.055, 0.043, 0.04])
@@ -87,21 +88,25 @@ def observation(rgb, color):
         mask = (red > 105) & (red > 1.28 * green) & (red > 1.55 * blue)
     rows, columns = np.nonzero(mask)
     if len(rows) < 15:
-        raise RuntimeError(f"Caixa {color} não encontrada na câmera.")
+        raise RuntimeError(f"The camera could not find the {ENGLISH_COLORS[color]} box.")
     return np.array([1, columns.mean() / rgb.shape[1], rows.mean() / rgb.shape[0]])
 
 
-def train(model, data, renderer, samples, rng, weights, dataset):
+def train(model, data, renderer, samples, rng, weights, dataset, viewer):
     features, targets, images, labels = [], [], [], []
     for _ in range(samples):
+        if not viewer.is_running():
+            return None
         reset(model, data, rng)
+        viewer.sync()
         rgb = image(renderer, data)
+        time.sleep(0.08)
         for color, address in boxes(model).items():
             features.append(observation(rgb, color))
             targets.append(data.qpos[address:address + 3].copy())
             if dataset:
                 images.append(rgb.copy())
-                labels.append(f"Pegue a caixa {color} e coloque na saída.")
+                labels.append(f"Pick up the {ENGLISH_COLORS[color]} box and place it on the output bench.")
     policy = np.linalg.lstsq(features, targets, rcond=None)[0]
     weights.parent.mkdir(parents=True, exist_ok=True)
     np.save(weights, policy)
@@ -157,9 +162,9 @@ class Physics:
                     for _ in range(6):
                         mjw.step(self.model_gpu, self.data_gpu)
                 self.graph = capture.graph
-            print(f"Física: {self.data_gpu.qpos.device}")
+            print(f"Physics: {self.data_gpu.qpos.device}")
         else:
-            print("Física: CPU")
+            print("Physics: CPU")
 
     def step(self):
         m, d = self.model, self.data
@@ -186,7 +191,7 @@ def run(model, data, renderer, policy, physics, color, viewer):
     joints = arm(model, side)
     address = boxes(model)[color]
     velocity = model.joint(f"caixa_{color}").dofadr.item()
-    print(f"Alvo visual: {color} em {grasp.round(3)}; mão: {side}")
+    print(f"Visual target: {ENGLISH_COLORS[color]} at {grasp.round(3)}; hand: {side}")
     high = np.array([0, 0, 0.065])
     waypoints = [
         (grasp + HAND_OFFSET + high, False), (grasp + HAND_OFFSET, False),
@@ -213,7 +218,7 @@ def run(model, data, renderer, policy, physics, color, viewer):
                 viewer.sync()
                 time.sleep(max(0.0, 0.03 - (time.monotonic() - begin)))
         if index == 1 and np.linalg.norm(data.site_xpos[site] - (data.qpos[address:address + 3] + HAND_OFFSET)) > 0.045:
-            print("Falha: a mão não alcançou a caixa.")
+            print("Failure: the hand did not reach the box.")
             return False
 
     selected = data.qpos[address:address + 3]
@@ -221,56 +226,83 @@ def run(model, data, renderer, policy, physics, color, viewer):
     success = bool(np.linalg.norm(selected[:2] - DESTINATION[:2]) < 0.065
                    and abs(selected[2] - OUTPUT_Z - HALF_BOX[2]) < 0.025
                    and abs(data.qpos[other + 1]) > 0.18)
-    print(f"{'SUCESSO' if success else 'FALHA'}: caixa {color} em {selected.round(3)}")
+    print(f"{'SUCCESS' if success else 'FAILURE'}: {ENGLISH_COLORS[color]} box at {selected.round(3)}")
     return success
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--assets", type=Path, required=True, help="Diretório unitree_g1 do Menagerie")
+    parser.add_argument("--assets", type=Path, required=True, help="Path to the Menagerie unitree_g1 directory")
     parser.add_argument("--device", choices=["cpu", "cuda:0"], default="cpu")
-    parser.add_argument("--instruction", default="Pegue a caixa azul e coloque na saída.")
+    parser.add_argument("--instruction", default="Pick up the blue box and place it on the output bench.")
     parser.add_argument("--weights", type=Path, default=Path("runs/policy.npy"))
     parser.add_argument("--dataset", type=Path)
-    parser.add_argument("--train", action="store_true")
-    parser.add_argument("--headless", action="store_true")
-    parser.add_argument("--episodes", type=int, default=1)
+    parser.add_argument("--train", action="store_true", help="Recalibrate the policy in the viewer")
+    parser.add_argument("--episodes", type=int, default=1, help="Number of attempts to display in the viewer")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
-    colors = [color for color in COLORS if re.search(rf"\b{color}\b", args.instruction.casefold())]
+    color_words = {"azul": r"azul|blue", "marrom": r"marrom|brown"}
+    colors = [
+        color for color, words in color_words.items()
+        if re.search(rf"\b(?:{words})\b", args.instruction.casefold())
+    ]
     if len(colors) != 1 or args.episodes < 1:
-        parser.error("Informe uma única cor (azul ou marrom) e ao menos um episódio.")
+        parser.error("Specify exactly one box color and at least one episode (azul/blue or marrom/brown).")
     if not (args.assets / "g1.xml").is_file():
-        parser.error("--assets precisa apontar para a pasta unitree_g1 com g1.xml e assets.")
+        parser.error("--assets must point to the unitree_g1 directory containing g1.xml and its assets.")
     model = build(args.assets)
     data = mj.MjData(model)
     rng = np.random.default_rng(args.seed)
-    with mj.Renderer(model, height=240, width=320) as renderer:
-        if args.train or not args.weights.exists():
-            if args.dataset:
-                args.dataset.parent.mkdir(parents=True, exist_ok=True)
-            policy = train(model, data, renderer, 24, np.random.default_rng(810), args.weights, args.dataset)
-            print(f"Política calibrada com 48 exemplos visuais: {args.weights}")
-        else:
-            policy = np.load(args.weights)
-        reset(model, data, rng)
-        physics = Physics(model, data, args.device)
-        if args.headless:
+    from mujoco import viewer as native_viewer
+
+    reset(model, data, rng)
+    with native_viewer.launch_passive(model, data) as viewer:
+        with viewer.lock():
+            viewer.cam.lookat[:] = [0.19, 0, 0.79]
+            viewer.cam.distance = 2.35
+            viewer.cam.azimuth = 135
+            viewer.cam.elevation = -24
+        viewer.sync()
+
+        with mj.Renderer(model, height=240, width=320) as renderer:
+            if args.train or not args.weights.exists():
+                if args.dataset:
+                    args.dataset.parent.mkdir(parents=True, exist_ok=True)
+                print("Calibrating the policy. Watch the box positions change in the viewer.")
+                policy = train(model, data, renderer, 24, np.random.default_rng(810),
+                               args.weights, args.dataset, viewer)
+                if policy is None:
+                    return 0
+                print(f"Policy calibrated on 48 camera examples: {args.weights}")
+            else:
+                policy = np.load(args.weights)
+
+            reset(model, data, rng)
+            viewer.sync()
+            physics = Physics(model, data, args.device)
             results = []
             for episode in range(args.episodes):
+                if not viewer.is_running():
+                    return 0
                 if episode:
                     reset(model, data, rng)
-                results.append(run(model, data, renderer, policy, physics, colors[0], None))
-            print(f"Resultado: {sum(results)}/{len(results)}")
-            return 0 if all(results) else 1
+                    viewer.sync()
+                print(f"Episode {episode + 1}/{args.episodes}: {args.instruction}")
+                result = run(model, data, renderer, policy, physics, colors[0], viewer)
+                if result is None:
+                    return 0
+                results.append(result)
+                if episode + 1 < args.episodes:
+                    end = time.monotonic() + 1
+                    while viewer.is_running() and time.monotonic() < end:
+                        viewer.sync()
+                        time.sleep(0.03)
 
-        import mujoco.viewer
-        with mujoco.viewer.launch_passive(model, data) as viewer:
-            result = run(model, data, renderer, policy, physics, colors[0], viewer)
+            print(f"Successful episodes: {sum(results)}/{len(results)}. Close the viewer to exit.")
             while viewer.is_running():
                 viewer.sync()
                 time.sleep(0.03)
-            return 1 if result is False else 0
+            return 0 if all(results) else 1
 
 
 if __name__ == "__main__":
