@@ -6,7 +6,7 @@ The Unitree G1 transfers a blue or brown box to an output bench in a simulated i
 
 In `run` mode, a trained **SmolVLA checkpoint** receives the RGB camera image, robot joint state, and complete text instruction. Its action commands set 15 G1 joint targets and the two simulated gripper commands. The simulator applies limits, checks whether the commanded gripper is near a box, and simulates the release. The model chooses which box to approach, which hand to use, and when to close and open the gripper.
 
-`collect` mode uses a scripted teacher solely to record demonstrations for training. The teacher does not run during policy inference. The G1 has a fixed base and an assisted grasp, suitable for testing box selection and transfer in simulation. A trained G1 checkpoint is required and is not included.
+`collect` mode uses a scripted teacher solely to record demonstrations for training. The teacher does not run during policy inference. The G1 uses the Menagerie model with articulated fingers. Each grip command flexes the thumb, index, and middle fingers progressively. The robot has a fixed base and an assisted grasp. Finger motion is visual and does not model the contact forces needed to hold the box. A trained G1 checkpoint is required and is not included.
 
 ## Install in Ubuntu-MuJoCo
 
@@ -21,7 +21,7 @@ export GALLIUM_DRIVER=d3d12
 export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
 ```
 
-Use a separate Python 3.12 environment. LeRobot 0.7.0 resolves to NumPy 2.2.6, which supports Python through 3.13. The original MuJoCo environment can remain on Python 3.14. For a new setup, clone this repository and run the same installation commands. Get the robot assets from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1). The examples below assume the assets are already present in your original MuJoCo directory.
+Use a separate Python 3.12 environment. LeRobot 0.7.0 resolves to NumPy 2.2.6, which supports Python through 3.13. The original MuJoCo environment can remain on Python 3.14. For a new setup, clone this repository and run the same installation commands. Get the robot assets from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1). The examples below assume the assets, including `g1_with_hands.xml`, are already present in your original MuJoCo directory.
 
 ## 1. Collect visible training demonstrations
 
@@ -31,7 +31,7 @@ python demo.py collect \
   --device cuda:0 --episodes 60 --dataset runs/g1-boxes
 ```
 
-Collection alternates blue and brown instructions. Demonstrations approach the box slowly, pause at pickup, lift before carrying, and lower the box onto the output bench before releasing it. Use a new dataset path when recollecting after a motion update. The visible teacher saves successful episodes as a local LeRobot dataset. Each frame records camera RGB, robot state, the complete task instruction, and joint and gripper actions. Close the viewer to stop collection early and save completed episodes.
+Collection alternates blue and brown instructions. Demonstrations approach the box slowly, close the fingers at pickup, lift before carrying, and lower the box onto the output bench before reopening the fingers. Use a new dataset path when recollecting after a motion update. The visible teacher saves successful episodes as a local LeRobot dataset. Each frame records camera RGB, robot state, the complete task instruction, and joint and gripper actions. Close the viewer to stop collection early and save completed episodes.
 
 ## 2. Fine-tune SmolVLA on the G1 action space
 

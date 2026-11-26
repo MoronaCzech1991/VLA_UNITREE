@@ -25,7 +25,7 @@ def add(parent, tag, **attributes):
 
 
 def build(assets):
-    root = ET.parse(assets / "g1.xml").getroot()
+    root = ET.parse(assets / "g1_with_hands.xml").getroot()
     compiler = root.find("compiler")
     compiler.set("meshdir", str((assets / compiler.get("meshdir", "assets")).resolve()))
     root.find("option").set("timestep", "0.005")
@@ -123,6 +123,16 @@ def arm(model, side):
     return [model.joint(name).id for name in names]
 
 
+def finger_pose(model, side):
+    """Return the joint addresses and mirrored flexion targets for the G1 hand."""
+    names = ("thumb_1", "thumb_2", "middle_0", "middle_1", "index_0", "index_1")
+    flexion = np.array([0.38, 0.82, -0.88, -0.93, -0.88, -0.93])
+    if side == "right":
+        flexion = -flexion
+    joints = [model.joint(f"{side}_hand_{name}_joint").id for name in names]
+    return model.jnt_qposadr[joints], flexion
+
+
 def approach(model, data, site, joints, target):
     jacobian = np.zeros((3, model.nv))
     dofs = model.jnt_dofadr[joints]
@@ -206,7 +216,10 @@ def run(model, data, renderer, policy, physics, color, viewer, record=None):
         (dropoff, False, 12),
         (dropoff + clearance, False, 26),
     ]
+    fingers, closed_angles = finger_pose(model, side)
+    grip = 0.0
     for index, (goal, carrying, frames) in enumerate(waypoints):
+        start_grip = grip
         start = data.site_xpos[site].copy()
         for fraction in np.linspace(1 / frames, 1, frames):
             if viewer and not viewer.is_running():
@@ -216,13 +229,15 @@ def run(model, data, renderer, policy, physics, color, viewer, record=None):
             if record is not None:
                 record.observe(model, data, renderer)
             approach(model, data, site, joints, start + blend * (goal - start))
+            grip = start_grip + blend * (float(carrying) - start_grip)
+            data.qpos[fingers] = grip * closed_angles
             if record is not None:
-                record.action(data, side if carrying else None)
-            if carrying:
+                record.action(data, side, grip)
+            if grip >= 0.65:
                 data.qpos[address:address + 3] = data.site_xpos[site] - HAND_OFFSET
                 data.qvel[velocity:velocity + 6] = 0
             physics.step()
-            if carrying:
+            if grip >= 0.65:
                 data.qpos[address:address + 3] = data.site_xpos[site] - HAND_OFFSET
                 data.qvel[velocity:velocity + 6] = 0
             mj.mj_forward(model, data)

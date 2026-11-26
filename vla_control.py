@@ -9,7 +9,7 @@ import numpy as np
 
 from teacher import (
     COLORS, DESTINATION, ENGLISH_COLORS, HALF_BOX, HAND_OFFSET, OUTPUT_Z,
-    Physics, arm, boxes, build, image, reset, run, train,
+    Physics, arm, boxes, build, finger_pose, image, reset, run, train,
 )
 
 
@@ -38,9 +38,11 @@ class Robot:
         self.sites = [model.site(f"hand_{side}").id for side in SIDES]
         self.held = [None, None]
         self.grip_request = np.zeros(2, dtype=bool)
+        self.grip_position = np.zeros(2, dtype=np.float32)
+        self.fingers = [finger_pose(model, side) for side in SIDES]
 
     def state(self, data):
-        return np.array([*data.qpos[self.addresses], *self.grip_request],
+        return np.array([*data.qpos[self.addresses], *self.grip_position],
                         dtype=np.float32)
 
     def apply(self, data, action, physics):
@@ -50,11 +52,15 @@ class Robot:
         current = data.qpos[self.addresses]
         desired = np.clip(action[:-2], self.limits[:, 0], self.limits[:, 1])
         data.qpos[self.addresses] = current + np.clip(desired - current, -0.10, 0.10)
+        desired_grip = np.clip(action[-2:], 0.0, 1.0)
+        self.grip_position += np.clip(desired_grip - self.grip_position, -0.12, 0.12)
+        for grip, (addresses, angles) in zip(self.grip_position, self.fingers):
+            data.qpos[addresses] = grip * angles
         mj.mj_kinematics(self.model, data)
 
         # Debounce marginal predictions so a noisy action cannot chatter the gripper.
-        self.grip_request[action[-2:] >= 0.65] = True
-        self.grip_request[action[-2:] <= 0.35] = False
+        self.grip_request[self.grip_position >= 0.65] = True
+        self.grip_request[self.grip_position <= 0.35] = False
         for hand, (site, grip) in enumerate(zip(self.sites, self.grip_request)):
             if not grip:
                 self.held[hand] = None
@@ -95,8 +101,8 @@ class Recorder:
         self.frames.append({CAMERA: image(renderer, data).copy(), STATE: state,
                             "task": self.instruction})
 
-    def action(self, data, side):
-        self.grip = np.array([side == hand for hand in SIDES], dtype=np.float32)
+    def action(self, data, side, amount):
+        self.grip = np.array([amount if side == hand else 0 for hand in SIDES], dtype=np.float32)
         self.frames[-1][ACTION] = np.concatenate((
             data.qpos[self.robot.addresses], self.grip
         )).astype(np.float32)
@@ -182,6 +188,7 @@ def rollout(args, model, data, renderer, robot, physics, viewer, rng):
         reset(model, data, rng)
         robot.held[:] = [None, None]
         robot.grip_request[:] = False
+        robot.grip_position[:] = 0
         policy.policy.reset()
         print(f"SmolVLA episode {episode + 1}: {args.instruction}", flush=True)
         for _ in range(args.steps):
@@ -217,8 +224,8 @@ def main():
         parser.error("run requires --checkpoint with a trained G1 SmolVLA policy.")
     if args.steps < 1 or args.episodes < 1:
         parser.error("--steps and --episodes must be positive.")
-    if not (args.assets / "g1.xml").is_file():
-        parser.error("--assets must point to the unitree_g1 directory containing g1.xml.")
+    if not (args.assets / "g1_with_hands.xml").is_file():
+        parser.error("--assets must point to the unitree_g1 directory containing g1_with_hands.xml.")
     model = build(args.assets)
     data = mj.MjData(model)
     rng = np.random.default_rng(args.seed)
