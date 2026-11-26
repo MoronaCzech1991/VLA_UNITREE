@@ -1,5 +1,9 @@
 # Unitree G1 simulation and vision-language-action experiments
 
+![Unitree G1 beside the output bench in MuJoCo, with a completed box transfer and live CUDA telemetry](docs/images/g1-mujoco-workstation.png)
+
+*MuJoCo workstation in `collect` mode after a successful box transfer. The overlay shows CUDA physics, the task instruction, and the recorded demonstration count.*
+
 | Workflow | Controller | Task and viewer |
 | --- | --- | --- |
 | MuJoCo workstation, `collect` | Scripted demonstration teacher | Fixed-base G1 transfers boxes, native MuJoCo GUI and live telemetry |
