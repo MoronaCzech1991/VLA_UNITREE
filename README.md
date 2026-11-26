@@ -13,14 +13,15 @@ In `run` mode, a trained **SmolVLA checkpoint** receives the RGB camera image, r
 ```bash
 cd ~/VLA_UNITREE
 git pull --ff-only origin main
-source ~/mujoco-demo/.venv/bin/activate
-uv pip install "lerobot[smolvla]"
+uv venv --python 3.12 .venv-vla
+source .venv-vla/bin/activate
+uv pip install -r requirements.txt "lerobot[smolvla]==0.7.0"
 unset LIBGL_ALWAYS_SOFTWARE
 export GALLIUM_DRIVER=d3d12
 export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
 ```
 
-For a new setup, clone this repository and install `requirements.txt` into your environment. Get the robot assets from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1). The examples below assume the assets are already present in your original MuJoCo directory.
+Use a separate Python 3.12 environment. LeRobot 0.7.0 resolves to NumPy 2.2.6, which supports Python through 3.13. The original MuJoCo environment can remain on Python 3.14. For a new setup, clone this repository and run the same installation commands. Get the robot assets from the [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/unitree_g1). The examples below assume the assets are already present in your original MuJoCo directory.
 
 ## 1. Collect visible training demonstrations
 
