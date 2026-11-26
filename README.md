@@ -1,24 +1,49 @@
-# Unitree G1 | SmolVLA factory logistics
+# Unitree G1 simulation and vision-language-action experiments
 
-The Unitree G1 transfers a blue or brown box to an output bench in a simulated industrial station. Every simulation opens the MuJoCo viewer. Both colors move between starting positions across episodes.
+| Workflow | Controller | Task and viewer |
+| --- | --- | --- |
+| MuJoCo workstation, `collect` | Scripted demonstration teacher | Fixed-base G1 transfers boxes, native MuJoCo GUI and live telemetry |
+| MuJoCo workstation, `run` | Fine-tuned SmolVLA | Fixed-base box transfer, native MuJoCo GUI |
+| MuJoCo SONIC rollout | Pretrained pi0.5 plus SONIC | Whole-body walking, live Rerun viewer in the Windows browser |
+| Isaac Lab Arena | Pretrained GR00T N1.6 plus whole-body control | Walk, pick up a box with both hands, carry it and place it, Isaac Sim GUI |
+
+## Quick start on Ubuntu-MuJoCo
+
+From an existing checkout with the Python environment and Menagerie assets installed:
+
+```bash
+cd ~/VLA_UNITREE && git pull --ff-only origin main && source .venv-vla/bin/activate &&
+env -u LIBGL_ALWAYS_SOFTWARE MUJOCO_GL=egl GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA \
+  python -u demo.py collect --assets ~/mujoco-demo/mujoco_menagerie/unitree_g1 \
+  --device cuda:0 --episodes 1 --dataset "runs/g1-preview-$(date +%s)"
+```
+
+This is the local smoke test for the GUI and CUDA physics. The scripted teacher drives this run. For VLA inference, use one of the trained checkpoint workflows below.
 
 ## Pretrained whole-body VLA in MuJoCo
 
-Run the published [nepyope/sonic_walk](https://huggingface.co/nepyope/sonic_walk) **pi0.5** checkpoint using the LeRobot Unitree G1 simulator and the **SONIC** whole-body decoder. This checkpoint is trained for walking. The workstation and box-transfer tasks below use different checkpoints.
+The published [nepyope/sonic_walk](https://huggingface.co/nepyope/sonic_walk) pi0.5 checkpoint controls walking. It uses the head camera and the SONIC whole-body decoder. The published weights are about 16.6 GB in float32, which exceeds the RTX 3060 Laptop GPU's 6 GB of VRAM. No compatible smaller walking checkpoint is included or validated.
 
-Set up a separate Python 3.12 environment using the [LeRobot G1 installation guide](https://huggingface.co/docs/lerobot/en/unitree_g1#part-1-getting-started), including the Unitree SDK, Pinocchio, and the MuJoCo simulation dependencies. For LeRobot 0.7.0, add the policy and GUI extras inside that environment:
-
-```bash
-python -m pip install "lerobot[unitree-g1,pi,core-scripts]==0.7.0" mujoco loguru msgpack msgpack-numpy
-```
-
-Run from this checkout in the activated G1 environment:
+Set up the [LeRobot G1 environment](https://huggingface.co/docs/lerobot/en/unitree_g1#part-1-getting-started) with Python 3.12, Unitree SDK2 Python, Cyclone DDS and the simulator dependencies. The [Unitree SDK instructions](https://github.com/unitreerobotics/unitree_sdk2_python) cover building Cyclone DDS 0.10.x if no compatible wheel is available.
 
 ```bash
-python run_sonic_vla.py --device cuda
+source .venv-vla/bin/activate
+uv pip install "lerobot[unitree-g1,pi,core-scripts]==0.7.0" mujoco loguru msgpack msgpack-numpy
+python -c 'import torch, unitree_sdk2py; from lerobot.robots.unitree_g1.controllers.sonic_whole_body import SonicWholeBodyController; assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))'
 ```
 
-The launcher serves the live **Rerun web viewer**, including the head-camera stream used by the VLA. Open the printed URL in Edge or Chrome on Windows. Use `--viewer native` only if the native Rerun window works on your system. The LeRobot simulator uses offscreen camera rendering for policy input. In this mode, Rerun provides the visual feed. CPU inference avoids keeping policy weights in VRAM and can run slower than real time. CUDA is the default. The graphics backend used for the viewer is separate from CUDA policy inference. The first launch downloads the checkpoint and simulator files.
+On a workstation with sufficient VRAM and disk space, download the checkpoint explicitly, then launch with its local path:
+
+```bash
+hf download nepyope/sonic_walk --local-dir runs/sonic-walk
+python -u run_sonic_vla.py --device cuda --checkpoint runs/sonic-walk
+```
+
+Open the printed Rerun URL in Edge or Chrome. The launcher requires a local policy directory before it starts a viewer or rollout. Other runtime assets may still download. The native viewer is available with `--viewer native`; the browser viewer avoids the native WSL `R32Float` graphics error.
+
+## WSL storage recovery
+
+If both Git and the model cache report `Read-only file system` or `Input/output error`, stop the rollout and use PowerShell to check Windows disk space. Back up the distribution's VHDX before filesystem repair. Follow the [Microsoft WSL disk recovery guide](https://learn.microsoft.com/en-us/windows/wsl/disk-space) and verify the target device before running `e2fsck`. After rebooting WSL, verify writes and run the local GUI smoke test above. A rollout message saying it returned a model without pretrained weights indicates a failed checkpoint load, even if a later line says the policy loaded.
 
 ## Whole-body humanoid VLA with NVIDIA GR00T
 
@@ -85,7 +110,7 @@ This is a starting configuration. Training and inference memory requirements nee
 ## 3. Watch SmolVLA control the robot
 
 ```bash
-python demo.py run \
+MUJOCO_GL=egl python demo.py run \
   --assets ~/mujoco-demo/mujoco_menagerie/unitree_g1 \
   --checkpoint runs/g1-smolvla/checkpoints/last/pretrained_model \
   --device cuda:0 --policy-device cuda --seed 73 \

@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 import shutil
 import socket
 import subprocess
@@ -27,6 +28,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda",
                         help="Policy inference device; CPU avoids allocating model weights in VRAM")
+    parser.add_argument("--checkpoint", type=Path,
+                        help="Local LeRobot pi0.5 checkpoint directory for the G1 SONIC controller")
     parser.add_argument("--viewer", choices=("web", "native"), default="web")
     parser.add_argument("--viewer-port", type=int, default=9090)
     parser.add_argument("--stream-port", type=int, default=9876)
@@ -35,6 +38,21 @@ def main():
         parser.error("Viewer ports must be between 1 and 65535.")
     if args.viewer_port == args.stream_port:
         parser.error("The web and stream ports must be different.")
+    if args.checkpoint is None:
+        parser.error("--checkpoint is required. See the README for checkpoint setup and GPU requirements.")
+    checkpoint = args.checkpoint.expanduser().resolve()
+    for filename in ("config.json", "model.safetensors"):
+        if not (checkpoint / filename).is_file():
+            parser.error(f"Missing checkpoint file: {checkpoint / filename}")
+    try:
+        config = json.loads((checkpoint / "config.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        parser.error(f"Cannot read checkpoint configuration: {error}")
+    if (config.get("type") != "pi05"
+            or config.get("input_features", {}).get("observation.images.ego_view", {}).get("shape") != [3, 480, 640]
+            or config.get("input_features", {}).get("observation.state", {}).get("shape") != [64]
+            or config.get("output_features", {}).get("action", {}).get("shape") != [64]):
+        parser.error("Expected a pi0.5 SONIC checkpoint with ego_view RGB and 64-value state and actions.")
     rollout = shutil.which("lerobot-rollout")
     if rollout is None:
         parser.error("Activate the LeRobot G1 environment before launching this demo.")
@@ -46,12 +64,12 @@ def main():
     }}
     environment = os.environ.copy()
     environment.setdefault("MUJOCO_GL", "egl")
-    print(f"Model: nepyope/sonic_walk (pi0.5); inference: {args.device}; viewer: Rerun {args.viewer}",
+    print(f"Model: {checkpoint} (pi0.5); inference: {args.device}; viewer: Rerun {args.viewer}",
           flush=True)
     command = [
         rollout,
         "--strategy.type=base",
-        "--policy.path=nepyope/sonic_walk",
+        f"--policy.path={checkpoint}",
         f"--policy.device={args.device}",
         "--robot.type=unitree_g1",
         "--robot.is_simulation=true",
