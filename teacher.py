@@ -13,7 +13,7 @@ ENGLISH_COLORS = {"azul": "blue", "marrom": "brown"}
 INPUT_Z = 0.94
 OUTPUT_Z = 0.92
 HALF_BOX = np.array([0.055, 0.043, 0.04])
-DESTINATION = np.array([0.34, 0.0, OUTPUT_Z + HALF_BOX[2] + 0.015])
+DESTINATION = np.array([0.34, 0.0, OUTPUT_Z + HALF_BOX[2] + 0.003])
 HAND_OFFSET = np.array([0.0, 0.0, 0.065])
 
 
@@ -191,19 +191,28 @@ def run(model, data, renderer, policy, physics, color, viewer, record=None):
     address = boxes(model)[color]
     velocity = model.joint(f"caixa_{color}").dofadr.item()
     print(f"Visual target: {ENGLISH_COLORS[color]} at {grasp.round(3)}; hand: {side}")
-    high = np.array([0, 0, 0.065])
+    pickup = grasp + HAND_OFFSET
+    dropoff = DESTINATION + HAND_OFFSET
+    clearance = np.array([0, 0, 0.065])
+    # Separate the slow approach and placement from the faster transit.
     waypoints = [
-        (grasp + HAND_OFFSET + high, False), (grasp + HAND_OFFSET, False),
-        (grasp + HAND_OFFSET + high, True), (DESTINATION + HAND_OFFSET + high, True),
-        (DESTINATION + HAND_OFFSET, True), (DESTINATION + HAND_OFFSET + high, False),
+        (pickup + clearance, False, 25),
+        (pickup, False, 32),
+        (pickup, True, 10),
+        (pickup + clearance, True, 32),
+        (dropoff + clearance, True, 42),
+        (dropoff, True, 38),
+        (dropoff, True, 10),
+        (dropoff, False, 12),
+        (dropoff + clearance, False, 26),
     ]
-    for index, (goal, carrying) in enumerate(waypoints):
+    for index, (goal, carrying, frames) in enumerate(waypoints):
         start = data.site_xpos[site].copy()
-        for fraction in np.linspace(0.05, 1, 20):
+        for fraction in np.linspace(1 / frames, 1, frames):
             if viewer and not viewer.is_running():
                 return None
             begin = time.monotonic()
-            blend = fraction * fraction * (3 - 2 * fraction)
+            blend = fraction**3 * (10 + fraction * (-15 + 6 * fraction))
             if record is not None:
                 record.observe(model, data, renderer)
             approach(model, data, site, joints, start + blend * (goal - start))

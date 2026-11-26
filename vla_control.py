@@ -37,9 +37,10 @@ class Robot:
         }
         self.sites = [model.site(f"hand_{side}").id for side in SIDES]
         self.held = [None, None]
+        self.grip_request = np.zeros(2, dtype=bool)
 
     def state(self, data):
-        return np.array([*data.qpos[self.addresses], *(box is not None for box in self.held)],
+        return np.array([*data.qpos[self.addresses], *self.grip_request],
                         dtype=np.float32)
 
     def apply(self, data, action, physics):
@@ -48,11 +49,14 @@ class Robot:
             raise ValueError(f"Expected {len(self.names)} finite G1 action values, got {action.shape}.")
         current = data.qpos[self.addresses]
         desired = np.clip(action[:-2], self.limits[:, 0], self.limits[:, 1])
-        data.qpos[self.addresses] = current + np.clip(desired - current, -0.18, 0.18)
+        data.qpos[self.addresses] = current + np.clip(desired - current, -0.10, 0.10)
         mj.mj_kinematics(self.model, data)
 
-        for hand, (site, grip) in enumerate(zip(self.sites, action[-2:])):
-            if grip < 0.5:
+        # Debounce marginal predictions so a noisy action cannot chatter the gripper.
+        self.grip_request[action[-2:] >= 0.65] = True
+        self.grip_request[action[-2:] <= 0.35] = False
+        for hand, (site, grip) in enumerate(zip(self.sites, self.grip_request)):
+            if not grip:
                 self.held[hand] = None
             elif self.held[hand] is None:
                 target = data.site_xpos[site] - HAND_OFFSET
@@ -177,6 +181,7 @@ def rollout(args, model, data, renderer, robot, physics, viewer, rng):
             break
         reset(model, data, rng)
         robot.held[:] = [None, None]
+        robot.grip_request[:] = False
         policy.policy.reset()
         print(f"SmolVLA episode {episode + 1}: {args.instruction}", flush=True)
         for _ in range(args.steps):
@@ -204,7 +209,7 @@ def main():
     parser.add_argument("--device", choices=["cpu", "cuda:0"], default="cpu", help="Physics device")
     parser.add_argument("--policy-device", choices=["cpu", "cuda"], default="cuda")
     parser.add_argument("--episodes", type=int, default=1)
-    parser.add_argument("--steps", type=int, default=160)
+    parser.add_argument("--steps", type=int, default=280)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--instruction", default="Pick up the blue box and place it on the output bench.")
     args = parser.parse_args()

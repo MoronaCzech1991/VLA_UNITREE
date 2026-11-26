@@ -31,7 +31,7 @@ python demo.py collect \
   --device cuda:0 --episodes 60 --dataset runs/g1-boxes
 ```
 
-Collection alternates blue and brown instructions. The visible teacher saves successful episodes as a local LeRobot dataset. Each frame records camera RGB, robot state, the complete task instruction, and joint and gripper actions. Close the viewer to stop collection early and save completed episodes.
+Collection alternates blue and brown instructions. Demonstrations approach the box slowly, pause at pickup, lift before carrying, and lower the box onto the output bench before releasing it. Use a new dataset path when recollecting after a motion update. The visible teacher saves successful episodes as a local LeRobot dataset. Each frame records camera RGB, robot state, the complete task instruction, and joint and gripper actions. Close the viewer to stop collection early and save completed episodes.
 
 ## 2. Fine-tune SmolVLA on the G1 action space
 
