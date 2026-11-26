@@ -15,10 +15,10 @@ python -m pip install "lerobot[unitree-g1,pi,core-scripts]==0.7.0" mujoco loguru
 Run from this checkout in the activated G1 environment:
 
 ```bash
-python run_sonic_vla.py --device cpu
+python run_sonic_vla.py --device cuda
 ```
 
-The launcher always requests the live **Rerun** window, including the head-camera stream used by the VLA. The LeRobot simulator uses offscreen camera rendering for policy input. In this mode, Rerun provides the visual feed. CPU inference avoids keeping policy weights in VRAM and can run slower than real time. To try CUDA on a machine with sufficient VRAM, pass `--device cuda`. The first launch downloads the checkpoint and simulator files.
+The launcher serves the live **Rerun web viewer**, including the head-camera stream used by the VLA. Open the printed URL in Edge or Chrome on Windows. Use `--viewer native` only if the native Rerun window works on your system. The LeRobot simulator uses offscreen camera rendering for policy input. In this mode, Rerun provides the visual feed. CPU inference avoids keeping policy weights in VRAM and can run slower than real time. CUDA is the default. The graphics backend used for the viewer is separate from CUDA policy inference. The first launch downloads the checkpoint and simulator files.
 
 ## Whole-body humanoid VLA with NVIDIA GR00T
 
